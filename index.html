@@ -69,7 +69,7 @@
         scene.add(sky);
 
         const textureGround = textureLoader.load(
-          "https://h6qcvv.csb.app/grass.jpg",
+          "models/grass.jpg",
           function (texture) {
             texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
             texture.repeat.set(60, 60);
@@ -173,7 +173,7 @@
         );
 
         // Trees
-        new FBXLoader().load("https://h6qcvv.csb.app/Tree.fbx", (object) => {
+        new FBXLoader().load("models/Tree.fbx", (object) => {
           object.traverse((child) => {
             object.scale.set(0.004, 0.004, 0.004);
             createTree(object.clone(), [0, 0, -10]);
