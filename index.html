@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Pokemon VR Capture</title>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <link type="text/css" rel="stylesheet" href="style.css" />
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r126/three.js"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+
+  <body>
+    <script type="module">
+      import { VRButton } from "https://unpkg.com/three@0.126.0/examples/jsm/webxr/VRButton.js";
+      import { FBXLoader } from "https://unpkg.com/three@0.126.0/examples/jsm/loaders/FBXLoader.js";
+      import { GLTFLoader } from "https://unpkg.com/three@0.126.0/examples/jsm/loaders/GLTFLoader.js";
+      import { XRControllerModelFactory } from "https://unpkg.com/three@0.126.0/examples/jsm/webxr/XRControllerModelFactory.js";
+
+      let currentPokeball = null;
+
+      let camera, scene, renderer;
+      let controllerL, controllerR;
+
+      let userDolly;
+      let rightGamepad = null;
+      let leftGamepad = null;
+
+      let pokeballs = [];
+      const POKEBALL_SPEED = 0.3;
+      const clock = new THREE.Clock();
+
+      let captureTargets = [];
+      let mario, pikachu, trex, snorlax;
+      let capturingTargets = [];
+
+      let trexMixer;
+      let isTrexCaptured = false;
+
+      let pokeballClosedModel = null;
+      let pokeballOpenModel = null;
+
+      initConfiguration();
+      initScene();
+
+      function initConfiguration() {
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+
+        let textureLoader = new THREE.TextureLoader();
+
+        scene = new THREE.Scene();
+
+        const textureSky = textureLoader.load(
+          "https://cdn.polyhaven.com/asset_img/primary/qwantani_noon_puresky.png?height=760&quality=95"
+        );
+        const materialSky = new THREE.MeshBasicMaterial({
+          map: textureSky,
+          side: THREE.DoubleSide,
+        });
+        const sky = new THREE.Mesh(
+          new THREE.SphereGeometry(30, 32, 32),
+          materialSky
+        );
+        scene.add(sky);
+
+        const textureGround = textureLoader.load(
+          "https://h6qcvv.csb.app/grass.jpg",
+          function (texture) {
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(60, 60);
+          }
+        );
+        const materialGround = new THREE.MeshStandardMaterial({
+          map: textureGround,
+        });
+        let plane = new THREE.Mesh(
+          new THREE.PlaneGeometry(60, 60),
+          materialGround
+        );
+        plane.rotation.set(-3.14159 / 2, 0, 0);
+        plane.receiveShadow = true;
+        scene.add(plane);
+
+        // Dolly Setup
+        userDolly = new THREE.Group();
+        userDolly.position.set(0, 0, 8);
+        scene.add(userDolly);
+
+        camera = new THREE.PerspectiveCamera(
+          70,
+          window.innerWidth / window.innerHeight,
+          0.01,
+          40
+        );
+        camera.position.set(0, 1.6, 0);
+        camera.rotation.set(0, 0, 0);
+        userDolly.add(camera);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        var controllerModelFactory = new XRControllerModelFactory();
+
+        // Right (Index 0)
+        controllerR = renderer.xr.getControllerGrip(0);
+        const material = new THREE.MeshPhongMaterial({
+          shininess: 6,
+          shading: true,
+          transparent: 1,
+          opacity: 0.8,
+        });
+        const modelR = controllerModelFactory.createControllerModel(
+          controllerR,
+          material
+        );
+        controllerR.add(modelR);
+        userDolly.add(controllerR);
+
+        // Left (Index 1)
+        controllerL = renderer.xr.getControllerGrip(1);
+        const modelL =
+          controllerModelFactory.createControllerModel(controllerL);
+        controllerL.add(modelL);
+        userDolly.add(controllerL);
+
+        // Gamepad Connections
+        const controllerRightInput = renderer.xr.getController(0);
+        controllerRightInput.addEventListener("connected", (event) => {
+          if (event.data.gamepad) {
+            rightGamepad = event.data.gamepad;
+          }
+        });
+
+        const controllerLeftInput = renderer.xr.getController(1);
+        controllerLeftInput.addEventListener("connected", (event) => {
+          if (event.data.gamepad) {
+            leftGamepad = event.data.gamepad;
+          }
+        });
+
+        controllerR.addEventListener("selectstart", ThrowPokeball);
+        controllerR.addEventListener("squeezestart", SpawnPokeball);
+
+        // Loaders
+        const pokeballLoader = new GLTFLoader();
+
+        pokeballLoader.load(
+          "models/pokeball-closed.glb",
+          (gltf) => {
+            pokeballClosedModel = gltf.scene;
+          },
+          undefined,
+          (error) => {
+            console.error(error);
+          }
+        );
+
+        pokeballLoader.load(
+          "models/pokeball-open.glb",
+          (gltf) => {
+            pokeballOpenModel = gltf.scene;
+          },
+          undefined,
+          (error) => {
+            console.error(error);
+          }
+        );
+
+        // Trees
+        new FBXLoader().load("https://h6qcvv.csb.app/Tree.fbx", (object) => {
+          object.traverse((child) => {
+            object.scale.set(0.004, 0.004, 0.004);
+            createTree(object.clone(), [0, 0, -10]);
+            createTree(object.clone(), [5, 0, -3]);
+            createTree(object.clone(), [5, 0, 6]);
+            createTree(object.clone(), [15, 0, -20]);
+            createTree(object.clone(), [7, 0, 13]);
+            createTree(object.clone(), [0, 0, 10]);
+            createTree(object.clone(), [-5, 0, 3]);
+            createTree(object.clone(), [-5, 0, -6]);
+            createTree(object.clone(), [-15, 0, 20]);
+            createTree(object.clone(), [10, 0, -8]);
+            createTree(object.clone(), [-10, 0, -12]);
+            createTree(object.clone(), [8, 0, 15]);
+            createTree(object.clone(), [-12, 0, 8]);
+            createTree(object.clone(), [18, 0, 5]);
+            createTree(object.clone(), [-8, 0, -15]);
+            createTree(object.clone(), [3, 0, -18]);
+          });
+        });
+
+        function createTree(tree, position) {
+          tree.position.set(position[0], position[1], position[2]);
+          scene.add(tree);
+        }
+
+        // Pokemon Loaders
+        const marioLoader = new GLTFLoader();
+        marioLoader.load("models/mario_obj.glb", (gltf) => {
+          mario = gltf.scene;
+          mario.name = "Mario";
+          mario.scale.set(0.3, 0.3, 0.3);
+          mario.position.set(0, 0, -3);
+
+          mario.updateMatrixWorld();
+          mario.userData.boundingBox = new THREE.Box3();
+          mario.userData.boundingBox.setFromObject(mario);
+
+          const boxHelper = new THREE.BoxHelper(mario, 0xffff00);
+          // scene.add(boxHelper);
+          mario.userData.boxHelper = boxHelper;
+
+          scene.add(mario);
+          captureTargets.push(mario);
+        });
+
+        const pikaLoader = new GLTFLoader();
+        pikaLoader.load("models/pikachu.glb", (gltf) => {
+          pikachu = gltf.scene;
+          pikachu.name = "Pikachu";
+          pikachu.scale.set(0.3, 0.3, 0.3);
+          pikachu.position.set(0, 0, 3);
+          // Initial rotation removed, movement logic handles it now
+
+          pikachu.updateMatrixWorld();
+          pikachu.userData.boundingBox = new THREE.Box3();
+          pikachu.userData.boundingBox.setFromObject(pikachu);
+
+          const boxHelper = new THREE.BoxHelper(pikachu, 0xffff00);
+          // scene.add(boxHelper);
+          pikachu.userData.boxHelper = boxHelper;
+
+          scene.add(pikachu);
+          captureTargets.push(pikachu);
+        });
+
+        const snorlaxLoader = new GLTFLoader();
+        snorlaxLoader.load("models/snorlax.glb", (gltf) => {
+          snorlax = gltf.scene;
+          snorlax.name = "Snorlax";
+          snorlax.scale.set(0.5, 0.5, 0.5);
+          snorlax.position.set(4, 0, 0);
+          // Initial rotation removed, movement logic handles it now
+
+          snorlax.updateMatrixWorld();
+          snorlax.userData.boundingBox = new THREE.Box3();
+          snorlax.userData.boundingBox.setFromObject(snorlax);
+
+          const boxHelper = new THREE.BoxHelper(snorlax, 0xffff00);
+          // scene.add(boxHelper);
+          snorlax.userData.boxHelper = boxHelper;
+
+          scene.add(snorlax);
+          captureTargets.push(snorlax);
+        });
+
+        const rexLoader = new GLTFLoader();
+        rexLoader.load("models/animated_rexy.glb", (gltf) => {
+          trex = gltf.scene;
+          trex.name = "T-Rex";
+          trex.scale.set(2, 2, 2);
+          trex.position.set(-5, 0, -4);
+          // Initial rotation removed, movement logic handles it now
+
+          trex.updateMatrixWorld();
+          trex.userData.boundingBox = new THREE.Box3();
+          trex.userData.boundingBox.setFromObject(trex);
+
+          const boxHelper = new THREE.BoxHelper(trex, 0xffff00);
+          // scene.add(boxHelper);
+          trex.userData.boxHelper = boxHelper;
+
+          scene.add(trex);
+          captureTargets.push(trex);
+
+          if (gltf.animations && gltf.animations.length > 0) {
+            trexMixer = new THREE.AnimationMixer(trex);
+            const action = trexMixer.clipAction(gltf.animations[0]);
+            action.play();
+          }
+        });
+
+        window.updateTrexMixer = function (delta) {
+          if (trexMixer && !isTrexCaptured) trexMixer.update(delta);
+        };
+
+        renderer.xr.enabled = true;
+        container.appendChild(renderer.domElement);
+        document.body.appendChild(VRButton.createButton(renderer));
+        renderer.setAnimationLoop(render);
+      }
+
+      function initScene() {
+        var light = new THREE.HemisphereLight(0xffffbb, 0x080820, 1);
+        light.position.set(0.5, 1, 0.25);
+        scene.add(light);
+      }
+
+      function checkPokeballCollisions() {
+        for (let i = pokeballs.length - 1; i >= 0; i--) {
+          const ball = pokeballs[i];
+          const ballSphere = new THREE.Sphere(ball.position, 0.2);
+
+          for (let j = 0; j < captureTargets.length; j++) {
+            const target = captureTargets[j];
+            if (!target) continue;
+
+            // Update box to current model position
+            if (target.userData.boundingBox)
+              target.userData.boundingBox.setFromObject(target);
+
+            // Update visual helper
+            if (target.userData.boxHelper) target.userData.boxHelper.update();
+
+            if (target.userData.boundingBox.intersectsSphere(ballSphere)) {
+              console.log("COLLISION CONFIRMED WITH: ", target.name);
+              const collisionPosition = ball.position.clone();
+              scene.remove(ball);
+              pokeballs.splice(i, 1);
+              captureTarget(target, collisionPosition);
+              break;
+            }
+          }
+        }
+      }
+
+      function captureTarget(target, collisionPosition) {
+        if (target.userData.boxHelper) {
+          scene.remove(target.userData.boxHelper);
+          target.userData.boxHelper = null;
+        }
+
+        if (target.name === "T-Rex") isTrexCaptured = true;
+
+        target.userData.capturing = true;
+        target.userData.captureProgress = 0;
+
+        target.userData.initialScale = {
+          x: target.scale.x,
+          y: target.scale.y,
+          z: target.scale.z,
+        };
+        target.userData.initialY = target.position.y;
+
+        if (pokeballOpenModel) {
+          const openBall = pokeballOpenModel.clone();
+          openBall.position.set(target.position.x, 0.25, target.position.z);
+          openBall.scale.set(0.015, 0.015, 0.015);
+          scene.add(openBall);
+          target.userData.openPokeball = openBall;
+        }
+
+        capturingTargets.push(target);
+      }
+
+      function updateCaptures() {
+        for (let i = capturingTargets.length - 1; i >= 0; i--) {
+          const target = capturingTargets[i];
+
+          target.userData.captureProgress += 0.02;
+          const progress = target.userData.captureProgress;
+
+          if (progress < 1.0) {
+            target.rotation.y += 0.3;
+            const scaleMultiplier = 1 - progress;
+            target.scale.set(
+              target.userData.initialScale.x * scaleMultiplier,
+              target.userData.initialScale.y * scaleMultiplier,
+              target.userData.initialScale.z * scaleMultiplier
+            );
+            target.position.y = THREE.MathUtils.lerp(
+              target.userData.initialY,
+              0.25,
+              progress
+            );
+          } else {
+            console.log(`${target.name} captured!`);
+            scene.remove(target);
+            if (target.userData.openPokeball)
+              scene.remove(target.userData.openPokeball);
+            capturingTargets.splice(i, 1);
+            const index = captureTargets.indexOf(target);
+            if (index > -1) captureTargets.splice(index, 1);
+          }
+        }
+      }
+
+      function SpawnPokeball(event) {
+        if (!currentPokeball && pokeballClosedModel) {
+          currentPokeball = pokeballClosedModel.clone();
+          currentPokeball.scale.set(0.03, 0.03, 0.03);
+          controllerR.add(currentPokeball);
+          console.log("Pokéball ready!");
+        }
+      }
+
+      function ThrowPokeball(event) {
+        if (currentPokeball) {
+          scene.attach(currentPokeball);
+          const pokeball = currentPokeball;
+          pokeball.scale.set(0.08, 0.08, 0.08);
+
+          const direction = new THREE.Vector3(0, -0.3, -1);
+
+          const worldQuaternion = new THREE.Quaternion();
+          controllerR.getWorldQuaternion(worldQuaternion);
+          direction.applyQuaternion(worldQuaternion);
+
+          direction.normalize();
+
+          pokeball.userData.velocity = direction.multiplyScalar(POKEBALL_SPEED);
+          pokeball.userData.lifetime = 0;
+
+          pokeballs.push(pokeball);
+          currentPokeball = null;
+          console.log("Pokéball thrown!");
+        }
+      }
+
+      function updatePokeballs() {
+        for (let i = pokeballs.length - 1; i >= 0; i--) {
+          const ball = pokeballs[i];
+          ball.position.add(ball.userData.velocity);
+          ball.userData.velocity.y -= 0.01;
+          ball.userData.lifetime++;
+          if (ball.position.y < 0 || ball.userData.lifetime > 300) {
+            scene.remove(ball);
+            pokeballs.splice(i, 1);
+          }
+        }
+      }
+
+      function handleControllerInput() {
+        // Rotation (Right Stick)
+        if (rightGamepad) {
+          const axisX = rightGamepad.axes[2];
+          if (Math.abs(axisX) > 0.1) {
+            userDolly.rotation.y -= axisX * 0.04;
+          }
+        }
+
+        // Movement (Left Stick)
+        if (leftGamepad) {
+          const axisY = leftGamepad.axes[3];
+          if (Math.abs(axisY) > 0.1) {
+            userDolly.translateZ(axisY * 0.1);
+          }
+        }
+      }
+
+      // --- NEW: RICH MOVEMENT UPDATE ---
+      function updateModelMovements() {
+        const time = clock.getElapsedTime();
+
+        // Pikachu: Quick Figure-Eight Path
+        if (pikachu && !pikachu.userData.capturing) {
+          // Look-ahead point (0.1s in future)
+          const lookAheadT = time + 0.1;
+          const targetX = Math.sin(lookAheadT * 2.0) * 5; // Wide X range (5m radius)
+          const targetZ = Math.sin(lookAheadT * 4.0) * 2.5; // Faster Z creates figure-8
+
+          // 1. Look at the future point
+          pikachu.lookAt(targetX, pikachu.position.y, targetZ);
+
+          // 2. Move to current point
+          pikachu.position.x = Math.sin(time * 2.0) * 5;
+          pikachu.position.z = Math.sin(time * 4.0) * 2.5;
+        }
+
+        // Snorlax: Slow, Wide Circular Path around (4,0,0)
+        if (snorlax && !snorlax.userData.capturing) {
+          const centerX = 4;
+          const centerZ = 0;
+          const radius = 6;
+          const speed = 0.3;
+
+          const lookAheadT = time + 0.2; // Look further ahead since it's slower
+          const targetX = centerX + Math.cos(lookAheadT * speed) * radius;
+          const targetZ = centerZ + Math.sin(lookAheadT * speed) * radius;
+
+          snorlax.lookAt(targetX, snorlax.position.y, targetZ);
+          // Fix model orientation (Snorlax faces sideways by default)
+          snorlax.rotation.y -= Math.PI / 2;
+
+          snorlax.position.x = centerX + Math.cos(time * speed) * radius;
+          snorlax.position.z = centerZ + Math.sin(time * speed) * radius;
+        }
+
+        // T-Rex: Large Patrol Oval Path centered around Z=0
+        if (trex && !trex.userData.capturing) {
+          const centerX = -5;
+          const centerZ = 0;
+          const widthX = 4;
+          const depthZ = 10; // Very long path
+          const speed = 0.5;
+
+          const lookAheadT = time + 0.1;
+          // Using cosine for X, sine for Z to make an oval
+          const targetX = centerX + Math.cos(lookAheadT * speed) * widthX;
+          const targetZ = centerZ + Math.sin(lookAheadT * speed) * depthZ;
+
+          trex.lookAt(targetX, trex.position.y, targetZ);
+
+          trex.position.x = centerX + Math.cos(time * speed) * widthX;
+          trex.position.z = centerZ + Math.sin(time * speed) * depthZ;
+        }
+      }
+
+      function render() {
+        const delta = clock.getDelta();
+        if (window.updateTrexMixer) window.updateTrexMixer(delta);
+
+        handleControllerInput();
+
+        // Call movement update
+        updateModelMovements();
+
+        updatePokeballs();
+        checkPokeballCollisions();
+        updateCaptures();
+        renderer.render(scene, camera);
+      }
+    </script>
+  </body>
+</html>
