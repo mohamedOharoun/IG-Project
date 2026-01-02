@@ -14,5 +14,6 @@ Se ha decidido ampliar varias ampliaciones de la última tarea con VR en codesan
 - **Efecto "Billboard":** Todos los elementos de la interfaz (barras de vida y textos) rotan automáticamente para mirar siempre hacia la cámara del jugador, asegurando que siempre sean visibles sin importar hacia dónde camine el Pokémon.
 
 Pequeña DEMO con los cambios realizados
+
 https://github.com/user-attachments/assets/75d65547-c41d-4f50-99ad-4960d681675d
 
