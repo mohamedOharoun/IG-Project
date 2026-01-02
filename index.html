@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>Pokemon VR Capture</title>
+    <title>Pokemon VR - Final Polish</title>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -43,6 +43,13 @@
 
       let pokeballClosedModel = null;
       let pokeballOpenModel = null;
+
+      // Score Variables
+      let score = 0;
+      let totalTargets = 0;
+      let scoreSprite = null;
+
+      const LIFE_COLORS = [0xff0000, 0xffa500, 0xffff00, 0xadff2f, 0x00ff00];
 
       initConfiguration();
       initScene();
@@ -86,7 +93,6 @@
         plane.receiveShadow = true;
         scene.add(plane);
 
-        // Dolly Setup
         userDolly = new THREE.Group();
         userDolly.position.set(0, 0, 8);
         scene.add(userDolly);
@@ -98,7 +104,6 @@
           40
         );
         camera.position.set(0, 1.6, 0);
-        camera.rotation.set(0, 0, 0);
         userDolly.add(camera);
 
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -107,70 +112,52 @@
 
         var controllerModelFactory = new XRControllerModelFactory();
 
-        // Right (Index 0)
+        // Right Controller
         controllerR = renderer.xr.getControllerGrip(0);
-        const material = new THREE.MeshPhongMaterial({
-          shininess: 6,
-          shading: true,
-          transparent: 1,
-          opacity: 0.8,
-        });
         const modelR = controllerModelFactory.createControllerModel(
           controllerR,
-          material
+          new THREE.MeshPhongMaterial({
+            shininess: 6,
+            shading: true,
+            opacity: 0.8,
+            transparent: true,
+          })
         );
         controllerR.add(modelR);
         userDolly.add(controllerR);
 
-        // Left (Index 1)
+        // Left Controller (Holds Score)
         controllerL = renderer.xr.getControllerGrip(1);
         const modelL =
           controllerModelFactory.createControllerModel(controllerL);
         controllerL.add(modelL);
         userDolly.add(controllerL);
 
-        // Gamepad Connections
+        // Setup Scoreboard on Left Hand
+        createScoreBoard();
+
         const controllerRightInput = renderer.xr.getController(0);
         controllerRightInput.addEventListener("connected", (event) => {
-          if (event.data.gamepad) {
-            rightGamepad = event.data.gamepad;
-          }
+          if (event.data.gamepad) rightGamepad = event.data.gamepad;
         });
 
         const controllerLeftInput = renderer.xr.getController(1);
         controllerLeftInput.addEventListener("connected", (event) => {
-          if (event.data.gamepad) {
-            leftGamepad = event.data.gamepad;
-          }
+          if (event.data.gamepad) leftGamepad = event.data.gamepad;
         });
 
         controllerR.addEventListener("selectstart", ThrowPokeball);
         controllerR.addEventListener("squeezestart", SpawnPokeball);
 
-        // Loaders
         const pokeballLoader = new GLTFLoader();
 
-        pokeballLoader.load(
-          "models/pokeball-closed.glb",
-          (gltf) => {
-            pokeballClosedModel = gltf.scene;
-          },
-          undefined,
-          (error) => {
-            console.error(error);
-          }
-        );
+        pokeballLoader.load("models/pokeball-closed.glb", (gltf) => {
+          pokeballClosedModel = gltf.scene;
+        });
 
-        pokeballLoader.load(
-          "models/pokeball-open.glb",
-          (gltf) => {
-            pokeballOpenModel = gltf.scene;
-          },
-          undefined,
-          (error) => {
-            console.error(error);
-          }
-        );
+        pokeballLoader.load("models/pokeball-open.glb", (gltf) => {
+          pokeballOpenModel = gltf.scene;
+        });
 
         // Trees
         new FBXLoader().load("models/Tree.fbx", (object) => {
@@ -209,15 +196,12 @@
           mario.position.set(0, 0, -3);
 
           mario.updateMatrixWorld();
-          mario.userData.boundingBox = new THREE.Box3();
-          mario.userData.boundingBox.setFromObject(mario);
+          mario.userData.boundingBox = new THREE.Box3().setFromObject(mario);
 
-          const boxHelper = new THREE.BoxHelper(mario, 0xffff00);
-          // scene.add(boxHelper);
-          mario.userData.boxHelper = boxHelper;
-
+          createLifeBar(mario);
           scene.add(mario);
           captureTargets.push(mario);
+          updateTotalTargets();
         });
 
         const pikaLoader = new GLTFLoader();
@@ -226,18 +210,16 @@
           pikachu.name = "Pikachu";
           pikachu.scale.set(0.3, 0.3, 0.3);
           pikachu.position.set(0, 0, 3);
-          // Initial rotation removed, movement logic handles it now
 
           pikachu.updateMatrixWorld();
-          pikachu.userData.boundingBox = new THREE.Box3();
-          pikachu.userData.boundingBox.setFromObject(pikachu);
+          pikachu.userData.boundingBox = new THREE.Box3().setFromObject(
+            pikachu
+          );
 
-          const boxHelper = new THREE.BoxHelper(pikachu, 0xffff00);
-          // scene.add(boxHelper);
-          pikachu.userData.boxHelper = boxHelper;
-
+          createLifeBar(pikachu);
           scene.add(pikachu);
           captureTargets.push(pikachu);
+          updateTotalTargets();
         });
 
         const snorlaxLoader = new GLTFLoader();
@@ -246,18 +228,16 @@
           snorlax.name = "Snorlax";
           snorlax.scale.set(0.5, 0.5, 0.5);
           snorlax.position.set(4, 0, 0);
-          // Initial rotation removed, movement logic handles it now
 
           snorlax.updateMatrixWorld();
-          snorlax.userData.boundingBox = new THREE.Box3();
-          snorlax.userData.boundingBox.setFromObject(snorlax);
+          snorlax.userData.boundingBox = new THREE.Box3().setFromObject(
+            snorlax
+          );
 
-          const boxHelper = new THREE.BoxHelper(snorlax, 0xffff00);
-          // scene.add(boxHelper);
-          snorlax.userData.boxHelper = boxHelper;
-
+          createLifeBar(snorlax);
           scene.add(snorlax);
           captureTargets.push(snorlax);
+          updateTotalTargets();
         });
 
         const rexLoader = new GLTFLoader();
@@ -266,18 +246,14 @@
           trex.name = "T-Rex";
           trex.scale.set(2, 2, 2);
           trex.position.set(-5, 0, -4);
-          // Initial rotation removed, movement logic handles it now
 
           trex.updateMatrixWorld();
-          trex.userData.boundingBox = new THREE.Box3();
-          trex.userData.boundingBox.setFromObject(trex);
+          trex.userData.boundingBox = new THREE.Box3().setFromObject(trex);
 
-          const boxHelper = new THREE.BoxHelper(trex, 0xffff00);
-          // scene.add(boxHelper);
-          trex.userData.boxHelper = boxHelper;
-
+          createLifeBar(trex);
           scene.add(trex);
           captureTargets.push(trex);
+          updateTotalTargets();
 
           if (gltf.animations && gltf.animations.length > 0) {
             trexMixer = new THREE.AnimationMixer(trex);
@@ -302,6 +278,176 @@
         scene.add(light);
       }
 
+      function updateTotalTargets() {
+        totalTargets = captureTargets.length;
+        updateScoreDisplay();
+      }
+
+      // --- WIDE CANVAS TEXT SPRITE (No Clipping) ---
+      function makeTextSprite(message, parameters) {
+        if (parameters === undefined) parameters = {};
+
+        var fontface = parameters.hasOwnProperty("fontface")
+          ? parameters["fontface"]
+          : "Arial Black";
+        var fontsize = parameters.hasOwnProperty("fontsize")
+          ? parameters["fontsize"]
+          : 60;
+        var borderThickness = parameters.hasOwnProperty("borderThickness")
+          ? parameters["borderThickness"]
+          : 4;
+        var borderColor = parameters.hasOwnProperty("borderColor")
+          ? parameters["borderColor"]
+          : { r: 0, g: 0, b: 0, a: 1.0 };
+        var backgroundColor = parameters.hasOwnProperty("backgroundColor")
+          ? parameters["backgroundColor"]
+          : { r: 0, g: 0, b: 0, a: 0.4 };
+        var textColor = parameters.hasOwnProperty("textColor")
+          ? parameters["textColor"]
+          : { r: 255, g: 255, b: 255, a: 1.0 };
+
+        var canvas = document.createElement("canvas");
+        // FIX: Increased canvas width to 2048 to prevent left/right clipping
+        canvas.width = 2048;
+        canvas.height = 512;
+        var context = canvas.getContext("2d");
+
+        context.font = fontsize + "px " + fontface;
+
+        var metrics = context.measureText(message);
+        var textWidth = metrics.width;
+
+        const xPos = canvas.width / 2;
+        const yPos = canvas.height / 2;
+
+        if (backgroundColor.a > 0) {
+          context.fillStyle =
+            "rgba(" +
+            backgroundColor.r +
+            "," +
+            backgroundColor.g +
+            "," +
+            backgroundColor.b +
+            "," +
+            backgroundColor.a +
+            ")";
+          const padding = 30; // More padding
+          context.fillRect(
+            xPos - textWidth / 2 - padding,
+            yPos - fontsize / 2 - padding,
+            textWidth + padding * 2,
+            fontsize + padding * 2
+          );
+        }
+
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+
+        context.strokeStyle =
+          "rgba(" +
+          borderColor.r +
+          "," +
+          borderColor.g +
+          "," +
+          borderColor.b +
+          "," +
+          borderColor.a +
+          ")";
+        context.lineWidth = borderThickness;
+        context.fillStyle =
+          "rgba(" +
+          textColor.r +
+          ", " +
+          textColor.g +
+          ", " +
+          textColor.b +
+          ", 1.0)";
+
+        context.strokeText(message, xPos, yPos);
+        context.fillText(message, xPos, yPos);
+
+        var texture = new THREE.Texture(canvas);
+        texture.needsUpdate = true;
+        texture.minFilter = THREE.LinearFilter;
+
+        var spriteMaterial = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+        });
+        var sprite = new THREE.Sprite(spriteMaterial);
+        // Maintain Aspect Ratio based on new wide canvas
+        sprite.scale.set(canvas.width / canvas.height, 1, 1);
+        return sprite;
+      }
+
+      // --- SCOREBOARD ---
+      function createScoreBoard() {
+        scoreSprite = makeTextSprite("Score: 0 / 0");
+        // FIX: Moved slightly right (0.1) and ensured scale fits new aspect ratio
+        scoreSprite.position.set(0.1, 0.2, 0);
+        scoreSprite.scale.multiplyScalar(0.08); // Smaller multiplier because base canvas is huge now
+        controllerL.add(scoreSprite);
+      }
+
+      function updateScoreDisplay() {
+        if (!scoreSprite) return;
+        const sprite = makeTextSprite(`Score: ${score} / ${totalTargets}`);
+        scoreSprite.material.map = sprite.material.map;
+        scoreSprite.material.needsUpdate = true;
+      }
+
+      // --- LIFE BARS & STATUS TEXT ---
+      function createLifeBar(model) {
+        model.userData.life = 5;
+        model.userData.lifeSlots = [];
+
+        const lifeGroup = new THREE.Group();
+
+        const box = new THREE.Box3().setFromObject(model);
+        let localHeadTop = (box.max.y - model.position.y) / model.scale.y;
+
+        let paddingOffset = 0.5;
+        if (model.name === "T-Rex") paddingOffset += 2.5;
+
+        const verticalPos = localHeadTop + paddingOffset / model.scale.y;
+        lifeGroup.position.y = verticalPos;
+
+        const inverseScale = 1.0 / model.scale.y;
+        lifeGroup.scale.set(inverseScale, inverseScale, inverseScale);
+
+        const geometry = new THREE.BoxGeometry(0.22, 0.15, 0.08);
+        const initialColor = new THREE.Color(LIFE_COLORS[4]);
+
+        for (let i = 0; i < 5; i++) {
+          const material = new THREE.MeshBasicMaterial({ color: initialColor });
+          const slot = new THREE.Mesh(geometry, material);
+          slot.position.x = (i - 2) * 0.25;
+          lifeGroup.add(slot);
+          model.userData.lifeSlots.push(slot);
+        }
+
+        model.userData.lifeGroup = lifeGroup;
+        model.add(lifeGroup);
+
+        const catchSprite = makeTextSprite("Catch it NOW!", {
+          fontsize: 80,
+          fontface: "Arial Black",
+          textColor: { r: 255, g: 255, b: 255, a: 1.0 },
+          borderColor: { r: 0, g: 0, b: 0, a: 1.0 },
+          borderThickness: 8,
+          backgroundColor: { r: 0, g: 0, b: 0, a: 0.5 },
+        });
+
+        catchSprite.position.y = verticalPos;
+        // Adjusted scale to handle the 2048 width canvas
+        // 4:1 ratio (2048/512)
+        catchSprite.scale.set(inverseScale * 4.0, inverseScale * 1.0, 1.0);
+        catchSprite.visible = false;
+
+        model.userData.catchSprite = catchSprite;
+        model.add(catchSprite);
+      }
+
       function checkPokeballCollisions() {
         for (let i = pokeballs.length - 1; i >= 0; i--) {
           const ball = pokeballs[i];
@@ -311,19 +457,41 @@
             const target = captureTargets[j];
             if (!target) continue;
 
-            // Update box to current model position
             if (target.userData.boundingBox)
               target.userData.boundingBox.setFromObject(target);
-
-            // Update visual helper
-            if (target.userData.boxHelper) target.userData.boxHelper.update();
 
             if (target.userData.boundingBox.intersectsSphere(ballSphere)) {
               console.log("COLLISION CONFIRMED WITH: ", target.name);
               const collisionPosition = ball.position.clone();
               scene.remove(ball);
               pokeballs.splice(i, 1);
-              captureTarget(target, collisionPosition);
+
+              if (target.userData.life > 0) {
+                target.userData.life -= 1;
+                const currentLife = target.userData.life;
+
+                if (currentLife === 0) {
+                  if (target.userData.lifeGroup)
+                    target.userData.lifeGroup.visible = false;
+                  if (target.userData.catchSprite)
+                    target.userData.catchSprite.visible = true;
+                } else {
+                  if (target.userData.lifeSlots[currentLife]) {
+                    target.userData.lifeSlots[currentLife].visible = false;
+                  }
+                  if (currentLife > 0) {
+                    const newColorHex = LIFE_COLORS[currentLife - 1];
+                    const newColor = new THREE.Color(newColorHex);
+                    for (let k = 0; k < currentLife; k++) {
+                      target.userData.lifeSlots[k].material.color.copy(
+                        newColor
+                      );
+                    }
+                  }
+                }
+              } else {
+                captureTarget(target, collisionPosition);
+              }
               break;
             }
           }
@@ -336,10 +504,18 @@
           target.userData.boxHelper = null;
         }
 
+        if (target.userData.lifeGroup)
+          target.userData.lifeGroup.visible = false;
+        if (target.userData.catchSprite)
+          target.userData.catchSprite.visible = false;
+
         if (target.name === "T-Rex") isTrexCaptured = true;
 
         target.userData.capturing = true;
         target.userData.captureProgress = 0;
+
+        score++;
+        updateScoreDisplay();
 
         target.userData.initialScale = {
           x: target.scale.x,
@@ -396,7 +572,6 @@
           currentPokeball = pokeballClosedModel.clone();
           currentPokeball.scale.set(0.03, 0.03, 0.03);
           controllerR.add(currentPokeball);
-          console.log("Pokéball ready!");
         }
       }
 
@@ -407,11 +582,9 @@
           pokeball.scale.set(0.08, 0.08, 0.08);
 
           const direction = new THREE.Vector3(0, -0.3, -1);
-
           const worldQuaternion = new THREE.Quaternion();
           controllerR.getWorldQuaternion(worldQuaternion);
           direction.applyQuaternion(worldQuaternion);
-
           direction.normalize();
 
           pokeball.userData.velocity = direction.multiplyScalar(POKEBALL_SPEED);
@@ -419,7 +592,6 @@
 
           pokeballs.push(pokeball);
           currentPokeball = null;
-          console.log("Pokéball thrown!");
         }
       }
 
@@ -437,79 +609,68 @@
       }
 
       function handleControllerInput() {
-        // Rotation (Right Stick)
         if (rightGamepad) {
           const axisX = rightGamepad.axes[2];
-          if (Math.abs(axisX) > 0.1) {
-            userDolly.rotation.y -= axisX * 0.04;
-          }
+          if (Math.abs(axisX) > 0.1) userDolly.rotation.y -= axisX * 0.04;
         }
 
-        // Movement (Left Stick)
         if (leftGamepad) {
           const axisY = leftGamepad.axes[3];
-          if (Math.abs(axisY) > 0.1) {
-            userDolly.translateZ(axisY * 0.1);
-          }
+          if (Math.abs(axisY) > 0.1) userDolly.translateZ(axisY * 0.1);
         }
       }
 
-      // --- NEW: RICH MOVEMENT UPDATE ---
       function updateModelMovements() {
         const time = clock.getElapsedTime();
+        const playerPos = new THREE.Vector3();
+        camera.getWorldPosition(playerPos);
 
-        // Pikachu: Quick Figure-Eight Path
+        const updateStatusRotation = (model) => {
+          if (model.userData.lifeGroup)
+            model.userData.lifeGroup.lookAt(playerPos);
+        };
+
         if (pikachu && !pikachu.userData.capturing) {
-          // Look-ahead point (0.1s in future)
           const lookAheadT = time + 0.1;
-          const targetX = Math.sin(lookAheadT * 2.0) * 5; // Wide X range (5m radius)
-          const targetZ = Math.sin(lookAheadT * 4.0) * 2.5; // Faster Z creates figure-8
-
-          // 1. Look at the future point
+          const targetX = Math.sin(lookAheadT * 2.0) * 5;
+          const targetZ = Math.sin(lookAheadT * 4.0) * 2.5;
           pikachu.lookAt(targetX, pikachu.position.y, targetZ);
-
-          // 2. Move to current point
           pikachu.position.x = Math.sin(time * 2.0) * 5;
           pikachu.position.z = Math.sin(time * 4.0) * 2.5;
+          updateStatusRotation(pikachu);
         }
 
-        // Snorlax: Slow, Wide Circular Path around (4,0,0)
         if (snorlax && !snorlax.userData.capturing) {
           const centerX = 4;
           const centerZ = 0;
           const radius = 6;
           const speed = 0.3;
-
-          const lookAheadT = time + 0.2; // Look further ahead since it's slower
+          const lookAheadT = time + 0.2;
           const targetX = centerX + Math.cos(lookAheadT * speed) * radius;
           const targetZ = centerZ + Math.sin(lookAheadT * speed) * radius;
-
           snorlax.lookAt(targetX, snorlax.position.y, targetZ);
-          // Fix model orientation (Snorlax faces sideways by default)
           snorlax.rotation.y -= Math.PI / 2;
-
           snorlax.position.x = centerX + Math.cos(time * speed) * radius;
           snorlax.position.z = centerZ + Math.sin(time * speed) * radius;
+          updateStatusRotation(snorlax);
         }
 
-        // T-Rex: Large Patrol Oval Path centered around Z=0
         if (trex && !trex.userData.capturing) {
           const centerX = -5;
           const centerZ = 0;
           const widthX = 4;
-          const depthZ = 10; // Very long path
+          const depthZ = 10;
           const speed = 0.5;
-
           const lookAheadT = time + 0.1;
-          // Using cosine for X, sine for Z to make an oval
           const targetX = centerX + Math.cos(lookAheadT * speed) * widthX;
           const targetZ = centerZ + Math.sin(lookAheadT * speed) * depthZ;
-
           trex.lookAt(targetX, trex.position.y, targetZ);
-
           trex.position.x = centerX + Math.cos(time * speed) * widthX;
           trex.position.z = centerZ + Math.sin(time * speed) * depthZ;
+          updateStatusRotation(trex);
         }
+
+        if (mario && !mario.userData.capturing) updateStatusRotation(mario);
       }
 
       function render() {
@@ -517,10 +678,7 @@
         if (window.updateTrexMixer) window.updateTrexMixer(delta);
 
         handleControllerInput();
-
-        // Call movement update
         updateModelMovements();
-
         updatePokeballs();
         checkPokeballCollisions();
         updateCaptures();
