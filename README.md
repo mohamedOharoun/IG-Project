@@ -12,3 +12,7 @@ Se ha decidido ampliar varias ampliaciones de la última tarea con VR en codesan
 - **Escalado Inteligente de UI:** Se ha añadido lógica para contrarrestar el tamaño de los modelos. Ahora, la barra de vida y el texto se ven del mismo tamaño (aproximadamente 1 metro de ancho) tanto en el T-Rex gigante como en el Pikachu pequeño.
 - **Corrección de Altura para el T-Rex:** Se añadió una excepción específica para el T-Rex para colocar la interfaz mucho más arriba, compensando su gran altura.
 - **Efecto "Billboard":** Todos los elementos de la interfaz (barras de vida y textos) rotan automáticamente para mirar siempre hacia la cámara del jugador, asegurando que siempre sean visibles sin importar hacia dónde camine el Pokémon.
+
+Pequeña DEMO con los cambios realizados
+https://github.com/user-attachments/assets/75d65547-c41d-4f50-99ad-4960d681675d
+
